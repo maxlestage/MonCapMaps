@@ -25,7 +25,8 @@ code de l'app reste privé dans `maxlestage/moncap`.
 - **Ménage Valhalla** (`valhalla-menage.yml`, manuel) : retire les Releases
   qui ne correspondent plus au découpage.
 - **Copie depuis moncap** (`copie-depuis-moncap.yml`, manuel, une fois) :
-  recopie les régions publiées jusqu'ici sur `maxlestage/moncap`, en
+  recopie les régions publiées jusqu’ici sur `maxlestage/moncap` (privé :
+  secret `MONCAP_TOKEN`, « Contents: read »), en
   gardant leur date de construction (ligne `construit: …` des notes).
 
 Données © OpenStreetMap contributors, sous licence ODbL.

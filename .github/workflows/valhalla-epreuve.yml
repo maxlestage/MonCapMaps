@@ -161,10 +161,11 @@ jobs:
         run: |
           set -euo pipefail
           # Épinglée sur la version du moteur embarqué par l'app
-          # (valhalla-mobile 0.5.1 → Valhalla 3.6.3). Avec `latest`, le
+          # (valhalla-mobile 0.6.4 → Valhalla 3.9.1 ; les paquets 3.6.3 déjà
+          # publiés s'y ouvrent, mesuré : Bordeaux → Limoges 222,5 km). Avec `latest`, le
           # générateur prend de l'avance sur le moteur : des clés obligatoires
           # de la configuration changent de nom, et le moteur meurt à
           # l'ouverture du paquet. À monter en même temps que valhalla-mobile,
           # jamais séparément.
           docker run --rm -v "$PWD/data:/data" -w /data \
-            ghcr.io/valhalla/valhalla:3.6.3 bash /data/epreuve.sh
+            ghcr.io/valhalla/valhalla:3.9.1 bash /data/epreuve.sh
