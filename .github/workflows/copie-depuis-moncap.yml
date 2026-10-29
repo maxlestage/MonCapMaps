@@ -2,7 +2,9 @@ name: Copie depuis moncap
 
 # Recopie ici, une fois, les paquets hors ligne publiés jusqu'ici sur les
 # Releases de maxlestage/moncap : même étiquette, même titre, mêmes fichiers.
-# Le dépôt source doit encore être public — il se lit alors sans jeton.
+# moncap étant privé, il se lit avec le secret MONCAP_TOKEN : un jeton à
+# portée fine, « Contents: read » sur maxlestage/moncap. Les écritures ici
+# passent par le jeton du workflow.
 #
 # Reprenable : une région déjà copiée, avec tous ses fichiers à la même
 # taille, est sautée. Relancer après une coupure reprend où l'on en était.
@@ -35,11 +37,16 @@ jobs:
       - name: Copie
         env:
           GH_TOKEN: ${{ github.token }}
+          LECTURE: ${{ secrets.MONCAP_TOKEN }}
           SOURCE: ${{ inputs.source }}
           CIBLE: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh api --paginate "repos/$SOURCE/releases?per_page=100" \
+          if [ -z "$LECTURE" ]; then
+            echo "::error::secret MONCAP_TOKEN absent : $SOURCE est privé (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          GH_TOKEN="$LECTURE" gh api --paginate "repos/$SOURCE/releases?per_page=100" \
             --jq '.[] | select(.tag_name | startswith("tuiles-eu-")) | @json' > source.jsonl
           gh api --paginate "repos/$CIBLE/releases?per_page=100" \
             --jq '.[] | @json' > cible.jsonl || : > cible.jsonl
@@ -70,7 +77,7 @@ jobs:
             DATE=$(jq -r '[.assets[] | select(.name | endswith(".tar"))][0].updated_at // ""' <<<"$ligne")
             echo "::group::[$n/$total] $TAG — $NOM"
             rm -rf r && mkdir r
-            gh release download "$TAG" -R "$SOURCE" -D r
+            GH_TOKEN="$LECTURE" gh release download "$TAG" -R "$SOURCE" -D r
             notes="$CORPS"
             [ -n "$DATE" ] && notes=$(printf '%s\n\nconstruit: %s' "$CORPS" "$DATE")
             gh release create "$TAG" -R "$CIBLE" --title "$NOM" --notes "$notes" \
