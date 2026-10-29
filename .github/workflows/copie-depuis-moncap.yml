@@ -1,0 +1,82 @@
+name: Copie depuis moncap
+
+# Recopie ici, une fois, les paquets hors ligne publiés jusqu'ici sur les
+# Releases de maxlestage/moncap : même étiquette, même titre, mêmes fichiers.
+# Le dépôt source doit encore être public — il se lit alors sans jeton.
+#
+# Reprenable : une région déjà copiée, avec tous ses fichiers à la même
+# taille, est sautée. Relancer après une coupure reprend où l'on en était.
+#
+# La date de construction d'origine (`updated_at` de l'archive) est écrite
+# dans les notes, sur une ligne « construit: … » : l'app compare cette date
+# à celle de la région installée pour proposer une mise à jour, et une
+# simple recopie, datée du jour, ferait retélécharger toutes les régions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Dépôt source des Releases"
+        default: maxlestage/moncap
+
+permissions:
+  contents: write
+
+concurrency:
+  group: copie-depuis-moncap
+  cancel-in-progress: false
+
+jobs:
+  copie:
+    name: Copie des régions
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Copie
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source }}
+          CIBLE: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$SOURCE/releases?per_page=100" \
+            --jq '.[] | select(.tag_name | startswith("tuiles-eu-")) | @json' > source.jsonl
+          gh api --paginate "repos/$CIBLE/releases?per_page=100" \
+            --jq '.[] | @json' > cible.jsonl || : > cible.jsonl
+          echo "Régions à la source : $(wc -l < source.jsonl)"
+
+          # Ce qui reste à copier : absent de la cible, ou fichiers différents.
+          python3 - <<'PY' > a_copier.jsonl
+          import json
+          cible = {}
+          for l in open("cible.jsonl"):
+              r = json.loads(json.loads(l)) if l.startswith('"') else json.loads(l)
+              cible[r["tag_name"]] = {a["name"]: a["size"] for a in r["assets"]}
+          for l in open("source.jsonl"):
+              r = json.loads(json.loads(l)) if l.startswith('"') else json.loads(l)
+              fichiers = {a["name"]: a["size"] for a in r["assets"]}
+              if cible.get(r["tag_name"]) != fichiers:
+                  print(json.dumps(r))
+          PY
+          total=$(wc -l < a_copier.jsonl)
+          echo "À copier : $total"
+
+          n=0
+          while IFS= read -r ligne; do
+            n=$((n + 1))
+            TAG=$(jq -r .tag_name <<<"$ligne")
+            NOM=$(jq -r .name <<<"$ligne")
+            CORPS=$(jq -r '.body // ""' <<<"$ligne" | grep -v '^construit: ' || true)
+            DATE=$(jq -r '[.assets[] | select(.name | endswith(".tar"))][0].updated_at // ""' <<<"$ligne")
+            echo "::group::[$n/$total] $TAG — $NOM"
+            rm -rf r && mkdir r
+            gh release download "$TAG" -R "$SOURCE" -D r
+            notes="$CORPS"
+            [ -n "$DATE" ] && notes=$(printf '%s\n\nconstruit: %s' "$CORPS" "$DATE")
+            gh release create "$TAG" -R "$CIBLE" --title "$NOM" --notes "$notes" \
+              || gh release edit "$TAG" -R "$CIBLE" --title "$NOM" --notes "$notes"
+            gh release upload "$TAG" r/* -R "$CIBLE" --clobber
+            rm -rf r
+            echo "::endgroup::"
+          done < a_copier.jsonl
+          echo "### $n région(s) copiée(s) depuis $SOURCE" >> "$GITHUB_STEP_SUMMARY"
